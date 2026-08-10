@@ -15,7 +15,7 @@
 
 In enterprise IT environments managed by **Microsoft Intune (Cloud MDM)** and **Active Directory Domain Services (On-Premises GPO)**, application deployments, enrollment states, and compliance policies leave extensive registry footprints.
 
-This module details the **dual-location App ID architecture** in Windows Registry, how to identify Intune App IDs, and how **Intune Detection Rules** interact with the Windows Registry.
+This module details the **dual-location App ID architecture**, the **Group Policy Resultant State (`GPO-List` / GPR State)**, Intune SideCar policies, and **Intune Detection Rules** interaction with the Windows Registry.
 
 ---
 
@@ -41,7 +41,32 @@ In both Intune and Active Directory, application deployments maintain **two sepa
 
 ---
 
-## 🔍 2. How to Find Intune App IDs & Match Endpoint Registry Keys
+## 🏛️ 2. Group Policy Resultant State (`GPO-List` / GPR State) & Intune SideCar Policies
+
+In addition to app deployment hives, Windows maintains **Resultant State of Policy (RSoP)** registry keys that log applied GPO IDs and Intune SideCar script policies.
+
+### 🏢 A. Active Directory `GPO-List` (GPR / GPO Resultant State)
+When Group Policies apply to a machine or user, Windows caches the GPO IDs, display names, and SYSVOL file paths under:
+
+* **Machine GPO List Path:** `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\State\Machine\GPO-List`
+* **User GPO List Path:** `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\State\<User-SID>\GPO-List`
+
+**Key Properties Stored per GPO Subkey:**
+- `GPO-ID`: The unique GUID of the Group Policy Object (e.g., `{35378EAC-683F-11D2-A89A-00C04FBBCFA2}`).
+- `DisplayName`: Human-readable GPO name defined in Active Directory (e.g., *"Deploy Chrome Enterprise Policy"*).
+- `FileSysPath`: The Domain Controller SYSVOL path containing policy files (`\\domain.local\SysVol\domain.local\Policies\{GUID}`).
+- `Extensions`: List of Client-Side Extension (CSE) GUIDs invoked by the GPO.
+
+### ☁️ B. Intune SideCar Policies Repository
+Intune's management agent (codenamed **SideCar**) stores remediation scripts, PowerShell scripts, and custom policy execution states under:
+
+* **SideCar App Status:** `HKLM\SOFTWARE\Microsoft\IntuneManagementExtension\SideCarPolicies\StatusService\App`
+* **SideCar Script Execution:** `HKLM\SOFTWARE\Microsoft\IntuneManagementExtension\SideCarPolicies\Scripts\Execution`
+* **SideCar Health Scripts:** `HKLM\SOFTWARE\Microsoft\IntuneManagementExtension\SideCarPolicies\SideCarPoliciesState`
+
+---
+
+## 🔍 3. How to Find Intune App IDs & Match Endpoint Registry Keys
 
 To troubleshoot a specific application deployed via Intune, you must match the **Intune Portal App ID** with the **Endpoint Registry App GUID**.
 
@@ -64,7 +89,7 @@ Under this key, you can view the exact installation status, exit code, and detec
 
 ---
 
-## 🎯 3. Intune Win32 App Detection Rules & Registry Mapping
+## 🎯 4. Intune Win32 App Detection Rules & Registry Mapping
 
 Intune uses **Detection Rules** to evaluate whether an app is already installed *before* running the installer, and to verify success *after* running the installer.
 
@@ -97,18 +122,18 @@ If Intune reports `Error 0x87D13B5D (User check failed / Detection rule not met)
 
 ---
 
-## 📜 4. Comprehensive PowerShell Script: Audit Intune & GPO App IDs
+## 📜 5. Comprehensive PowerShell Script: Audit Intune & GPO App IDs
 
 ```powershell
 <#
 .SYNOPSIS
-    Audits dual-location Intune App GUIDs, Active Directory GPO App IDs, and MSI Product Codes.
+    Audits dual-location Intune App GUIDs, GPO-List (GPR State), Active Directory App IDs, and SideCar Policies.
 .AUTHOR
     Toan Nguyen (toannguyenitoz@gmail.com)
 #>
 
 Write-Host "=================================================================" -ForegroundColor Cyan
-Write-Host "  INTUNE & AD GPO DUAL-LOCATION APP ID AUDIT TOOL               " -ForegroundColor Cyan
+Write-Host "  INTUNE & AD GPO DUAL-LOCATION & GPO-LIST AUDIT TOOL            " -ForegroundColor Cyan
 Write-Host "=================================================================" -ForegroundColor Cyan
 
 # 1. Location 1: Intune IME Win32 App Enforcement Keys
@@ -125,25 +150,24 @@ if (Test-Path $IntuneImePath) {
     } | Format-Table -AutoSize
 }
 
-# 2. Location 2: Intune MDM Enterprise Desktop App Management Inventory
+# 2. GPO-List (GPR State: Applied Active Directory GPOs)
+$GpoListPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\State\Machine\GPO-List"
+if (Test-Path $GpoListPath) {
+    Write-Host "`n[+] Active Directory GPO-List (GPR Applied GPOs State):" -ForegroundColor Green
+    Get-ChildItem -Path $GpoListPath | ForEach-Object {
+        $GpoId = Get-ItemPropertyValue -Path $_.PSPath -Name "GPO-ID" -ErrorAction SilentlyContinue
+        $Name  = Get-ItemPropertyValue -Path $_.PSPath -Name "DisplayName" -ErrorAction SilentlyContinue
+        Write-Host "  - GPO Name: $Name" -ForegroundColor White
+        Write-Host "    GPO ID:   $GpoId" -ForegroundColor Gray
+    }
+}
+
+# 3. Location 2: Intune MDM Enterprise Desktop App Management Inventory
 $IntuneMdmPath = "HKLM:\SOFTWARE\Microsoft\EnterpriseDesktopAppManagement"
 if (Test-Path $IntuneMdmPath) {
     Write-Host "`n[+] Intune Location 2 (MDM Desktop App Management Inventory):" -ForegroundColor Green
     Get-ChildItem -Path $IntuneMdmPath -Recurse | Where-Object { $_.PSChildName -like "{*" } | ForEach-Object {
         Write-Host "  - MDM Tracked App GUID: $($_.PSChildName)" -ForegroundColor White
-    }
-}
-
-# 3. Active Directory GPO AppManagement Deployment Keys
-$GpoAppPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Group Policy\AppManagement"
-if (Test-Path $GpoAppPath) {
-    Write-Host "`n[+] Active Directory GPO Deployed Apps (Location 1 & 2):" -ForegroundColor Green
-    Get-ChildItem -Path $GpoAppPath | ForEach-Object {
-        $Name = Get-ItemPropertyValue -Path $_.PSPath -Name "Deployment Name" -ErrorAction SilentlyContinue
-        $Path = Get-ItemPropertyValue -Path $_.PSPath -Name "Path" -ErrorAction SilentlyContinue
-        Write-Host "  - GPO App Name: $Name" -ForegroundColor White
-        Write-Host "    GPO App GUID: $($_.PSChildName)" -ForegroundColor Gray
-        Write-Host "    MSI Source:   $Path" -ForegroundColor Gray
     }
 }
 ```

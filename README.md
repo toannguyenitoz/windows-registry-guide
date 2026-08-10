@@ -31,7 +31,7 @@ Welcome to the **Windows Registry (Regedit) Complete Guide**. This repository pr
 | **[03. Security Hardening](docs/03-security-hardening-keys.md)** | Enterprise Security Policies | Hardening UAC, Defender, RDP, LSA Protection, USB access, and network policies |
 | **[04. Troubleshooting & Repairs](docs/04-troubleshooting-repairs.md)** | System Recovery Keys | Fixing network stacks, Windows Update glitches, file association corruptions |
 | **[05. Automation & Scripting](docs/05-backup-automation-scripting.md)** | PowerShell & `.reg` Scripts | Exporting/Importing `.reg` files, PowerShell `Set-ItemProperty` and `reg.exe` CLI |
-| **[06. Intune & AD Deployments](docs/06-intune-ad-enterprise-deployments.md)** | Enterprise Apps & MDM | Dual App ID locations, Intune Portal App ID lookup, Detection Rules (MSI/Registry/File/PS1), AD GPO AppManagement |
+| **[06. Intune & AD Deployments](docs/06-intune-ad-enterprise-deployments.md)** | Enterprise Apps & MDM | Dual App ID locations, GPO-List (GPR State), Intune SideCar, Portal App ID lookup & Detection Rules |
 
 ---
 
